@@ -1,31 +1,122 @@
-# 📝 Notes App (Streamlit + MySQL)
+# 📝 Notes App – Streamlit
 
-Aplikasi catatan berbasis web dengan tampilan ala **Google Keep**, dibuat menggunakan **Streamlit** dan **MySQL (XAMPP)**.  
-Mendukung login user, catatan berwarna, pinned notes, pencarian, upload gambar, dan export PDF.
+Aplikasi **catatan (Notes App)** berbasis **Streamlit** dengan tampilan modern ala **Google Keep**.  
+Mendukung autentikasi user, kategori, pinned notes, upload gambar, export PDF, serta mode light/dark.
 
----
-
-## ✨ Fitur Utama
-- 🔐 Login, Register, Reset Password
-- 🗒️ Tambah, hapus, dan pin catatan
-- 🎨 Warna catatan (Google Keep style)
-- 🖼️ Upload gambar pada catatan
-- 🔍 Search & filter kategori
-- 📌 Pinned notes terpisah
-- 📄 Export PDF per kategori (via sidebar)
-- 🌙 Light / Dark mode (default: Light)
+Aplikasi ini dibuat untuk **tugas, demo, dan portfolio**, serta **siap dideploy ke Streamlit Cloud**.
 
 ---
 
-## 🛠️ Teknologi
-- Python 3.9+
-- Streamlit
-- MySQL (XAMPP)
-- bcrypt
-- reportlab
+## 🚀 Fitur Utama
+
+- 🔐 **Authentication**
+  
+  - Login
+  
+  - Register
+  
+  - Session management
+
+- 🗒️ **Manajemen Catatan**
+
+  - Tambah / hapus catatan
+
+  - Kategori (Pribadi, Kerja, Kuliah, Ide, dll)
+
+  - Warna catatan
+
+  - Upload gambar (opsional)
+
+  - Pin / unpin catatan
+
+- 🔍 **Pencarian & Filter**
+
+  - Search catatan (judul & isi)
+
+  - Filter kategori
+
+  - Tampilan pinned terpisah
+
+- 📄 **Export PDF**
+
+  - Export semua catatan
+
+  - Export berdasarkan kategori
+
+  - Download langsung dari sidebar
+
+- 🌙 **Light / Dark Mode**
+
+  - Default: Light Mode
+
+  - Toggle Dark Mode manual
+
+  - UI stabil & nyaman dibaca
+
+- 🎨 **UI Modern**
+
+  - Card style ala Google Keep
+
+  - Sidebar navigasi
+
+  - Responsive layout (desktop friendly)
 
 ---
 
-## 📦 Instalasi
+## 🛠️ Teknologi yang Digunakan
+
+- **Python 3**
+
+- **Streamlit**
+
+- **SQLite** (database lokal, auto-create)
+
+- **bcrypt** (password hashing)
+
+- **ReportLab** (PDF export)
+
+---
+
+## 📂 Struktur Project
+
+notes-app-streamlit/
+
+│
+
+├── app.py
+
+├── requirements.txt
+
+├── README.md
+
+└── .gitignore
+
+
+---
+
+## ▶️ Cara Menjalankan Secara Lokal
+
+1. Clone repository:
+
+   ```bash
+
+   git clone https://github.com/USERNAME/notes-app-streamlit.git
+
+   cd notes-app-streamlit
+
+2. Install dependencies:
+
+    ```bash
+
+    pip install -r requirements.txt
+
+3. Jalankan aplikasi:
+
 ```bash
-pip install streamlit mysql-connector-python bcrypt reportlab
+
+streamlit run app.py
+
+
+4. Buka browser:
+
+http://localhost:8501

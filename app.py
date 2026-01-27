@@ -1,5 +1,5 @@
 import streamlit as st
-import mysql.connector
+import sqlite3
 import bcrypt
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -20,7 +20,7 @@ if "user" not in st.session_state:
 if "auth_mode" not in st.session_state:
     st.session_state.auth_mode = "login"
 if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = False   # DEFAULT = LIGHT
+    st.session_state.dark_mode = False
 if "view_mode" not in st.session_state:
     st.session_state.view_mode = "all"
 if "filter_category" not in st.session_state:
@@ -29,16 +29,41 @@ if "search_query" not in st.session_state:
     st.session_state.search_query = ""
 
 # =====================================================
-# DATABASE
+# DATABASE (SQLITE)
 # =====================================================
 def db():
-    return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="",
-        database="notes_app",
-        port=3306
+    return sqlite3.connect("notes.db", check_same_thread=False)
+
+def init_db():
+    con = db()
+    c = con.cursor()
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        password TEXT
     )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        title TEXT,
+        category TEXT,
+        color TEXT,
+        content TEXT,
+        image TEXT,
+        is_favorite INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    con.commit()
+    con.close()
+
+init_db()
 
 # =====================================================
 # UTIL
@@ -56,37 +81,38 @@ def img_to_b64(file):
         st.error("Ukuran gambar maksimal 2MB")
         return None
     return base64.b64encode(file.read()).decode()
-
 # =====================================================
-# NOTES (DB OPS)
+# NOTES
 # =====================================================
 def get_notes(uid):
-    con=db(); c=con.cursor(dictionary=True)
-    c.execute(
-        "SELECT * FROM notes WHERE user_id=%s ORDER BY is_favorite DESC, created_at DESC",
-        (uid,)
-    )
-    data=c.fetchall(); con.close()
-    return data
+    con=db(); c=con.cursor()
+    c.execute("""
+        SELECT * FROM notes
+        WHERE user_id=?
+        ORDER BY is_favorite DESC, created_at DESC
+    """,(uid,))
+    rows=c.fetchall(); con.close()
+
+    keys=["id","user_id","title","category","color","content","image","is_favorite","created_at"]
+    return [dict(zip(keys,r)) for r in rows]
 
 def add_note(uid,t,cg,col,ct,img):
-    if not t or not ct:
-        return
+    if not t or not ct: return
     con=db(); c=con.cursor()
-    c.execute(
-        "INSERT INTO notes(user_id,title,category,color,content,image) VALUES(%s,%s,%s,%s,%s,%s)",
-        (uid,t,cg,col,ct,img)
-    )
+    c.execute("""
+        INSERT INTO notes(user_id,title,category,color,content,image)
+        VALUES(?,?,?,?,?,?)
+    """,(uid,t,cg,col,ct,img))
     con.commit(); con.close()
 
 def delete_note(id):
     con=db(); c=con.cursor()
-    c.execute("DELETE FROM notes WHERE id=%s",(id,))
+    c.execute("DELETE FROM notes WHERE id=?",(id,))
     con.commit(); con.close()
 
 def pin_note(id,v):
     con=db(); c=con.cursor()
-    c.execute("UPDATE notes SET is_favorite=%s WHERE id=%s",(v,id))
+    c.execute("UPDATE notes SET is_favorite=? WHERE id=?",(v,id))
     con.commit(); con.close()
 
 # =====================================================
@@ -101,169 +127,94 @@ def export_pdf(data,cat):
     story=[Paragraph(f"<b>NOTES - {cat}</b>",styles["Title"]),Spacer(1,12)]
     for n in data:
         story.append(Paragraph(
-            f"<b>{n['title']}</b><br/>Kategori: {n['category']}<br/><br/>{n['content']}",
+            f"<b>{n['title']}</b><br/>{n['content']}",
             styles["Normal"]
         ))
         story.append(Spacer(1,10))
     doc.build(story)
     buf.seek(0)
     return buf
+
 # =====================================================
-# CSS (GOOGLE KEEP STYLE)
+# CSS + THEME
 # =====================================================
 st.markdown("""
 <style>
-.note-card {
-    padding:16px;
-    border-radius:18px;
-    margin-bottom:16px;
-    box-shadow:0 2px 6px rgba(0,0,0,0.15);
-    transition:.2s;
-}
-.note-card:hover {
-    box-shadow:0 6px 16px rgba(0,0,0,0.25);
-    transform:translateY(-2px);
-}
-.note-title {
-    font-size:16px;
-    font-weight:600;
-    margin-bottom:6px;
-}
-.note-content {
-    font-size:14px;
-    line-height:1.6;
-    white-space:pre-wrap;
-}
-.note-img {
-    margin-top:10px;
-    border-radius:12px;
-    max-width:100%;
-}
-.pinned {
-    border:2px solid #f4c430;
-}
+.note-card{
+ padding:16px;border-radius:18px;margin-bottom:16px;
+ box-shadow:0 2px 6px rgba(0,0,0,.15);transition:.2s}
+.note-card:hover{box-shadow:0 6px 16px rgba(0,0,0,.25)}
+.note-title{font-size:16px;font-weight:600;margin-bottom:6px}
+.note-content{font-size:14px;white-space:pre-wrap}
+.note-img{margin-top:10px;border-radius:12px;max-width:100%}
+.pinned{border:2px solid #f4c430}
 </style>
 """, unsafe_allow_html=True)
 
-# =====================================================
-# LIGHT / DARK MODE (STABLE)
-# =====================================================
 if st.session_state.dark_mode:
-    st.markdown("""
-    <style>
-    .stApp { background:#202124; color:#e8eaed; }
-    section.main h1,section.main h2,section.main h3,
-    section.main p,section.main label,section.main span {
-        color:#e8eaed !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    st.markdown("<style>.stApp{background:#202124;color:#e8eaed}</style>",unsafe_allow_html=True)
 else:
-    st.markdown("""
-    <style>
-    .stApp { background:#ffffff; color:#202124; }
-    section.main h1,section.main h2,section.main h3,
-    section.main p,section.main label,section.main span {
-        color:#202124 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    st.markdown("<style>.stApp{background:#ffffff;color:#202124}</style>",unsafe_allow_html=True)
 
 # =====================================================
-# SIDEBAR (SEARCH + FILTER + EXPORT)
+# SIDEBAR
 # =====================================================
 with st.sidebar:
     st.markdown("## 🗂️ Notes")
+    st.session_state.search_query = st.text_input("🔍 Cari")
 
-    st.session_state.search_query = st.text_input(
-        "🔍 Cari catatan",
-        value=st.session_state.search_query
-    )
+    if st.button("📝 Semua"): st.session_state.view_mode="all"
+    if st.button("⭐ Pinned"): st.session_state.view_mode="pinned"
 
-    if st.button("📝 Semua Catatan", use_container_width=True):
-        st.session_state.view_mode="all"
-    if st.button("⭐ Pinned", use_container_width=True):
-        st.session_state.view_mode="pinned"
-
-    st.markdown("---")
     cat = st.selectbox(
         "📂 Kategori",
-        ["Semua","Pribadi","Kerja","Kuliah","Ide","Lainnya"],
-        index=["Semua","Pribadi","Kerja","Kuliah","Ide","Lainnya"]
-        .index(st.session_state.filter_category)
+        ["Semua","Pribadi","Kerja","Kuliah","Ide","Lainnya"]
     )
     st.session_state.filter_category=cat
-    if cat!="Semua":
-        st.session_state.view_mode="category"
+    if cat!="Semua": st.session_state.view_mode="category"
 
-    st.markdown("---")
     st.markdown("### 📄 Export PDF")
-    pdf_cat = st.selectbox(
-        "Kategori PDF",
-        ["Semua","Pribadi","Kerja","Kuliah","Ide","Lainnya"],
-        key="pdf_sidebar"
-    )
+    pdf_cat = st.selectbox("Kategori PDF",["Semua","Pribadi","Kerja","Kuliah","Ide","Lainnya"])
     st.download_button(
-        "⬇️ Download PDF",
-        export_pdf(
-            get_notes(st.session_state.user["id"]) if st.session_state.user else [],
-            pdf_cat
-        ),
+        "⬇️ Download",
+        export_pdf(get_notes(st.session_state.user["id"]) if st.session_state.user else [], pdf_cat),
         "notes.pdf",
-        mime="application/pdf",
-        use_container_width=True
+        mime="application/pdf"
     )
 
-    st.markdown("---")
     st.toggle("🌙 Dark Mode", key="dark_mode")
-
-    if st.session_state.user:
-        if st.button("🚪 Logout", use_container_width=True):
-            st.session_state.user=None
-            st.experimental_rerun()
-
 # =====================================================
 # AUTH
 # =====================================================
 def login(u,p):
-    con=db(); c=con.cursor(dictionary=True)
-    c.execute("SELECT * FROM users WHERE username=%s",(u,))
-    user=c.fetchone(); con.close()
-    if user and bcrypt.checkpw(p.encode(), user["password"].encode()):
-        return user
+    con=db(); c=con.cursor()
+    c.execute("SELECT * FROM users WHERE username=?",(u,))
+    r=c.fetchone(); con.close()
+    if r and bcrypt.checkpw(p.encode(), r[2].encode()):
+        return {"id":r[0],"username":r[1]}
 
 def register(u,p):
     con=db(); c=con.cursor()
-    c.execute("SELECT id FROM users WHERE username=%s",(u,))
-    if c.fetchone():
+    try:
+        h=bcrypt.hashpw(p.encode(),bcrypt.gensalt()).decode()
+        c.execute("INSERT INTO users(username,password) VALUES(?,?)",(u,h))
+        con.commit()
+        return True
+    except:
+        return False
+    finally:
         con.close()
-        return False,"Username sudah ada"
-    h=bcrypt.hashpw(p.encode(),bcrypt.gensalt()).decode()
-    c.execute("INSERT INTO users(username,password) VALUES(%s,%s)",(u,h))
-    con.commit(); con.close()
-    return True,"Registrasi berhasil"
 
-def reset_pw(u,p):
-    con=db(); c=con.cursor()
-    h=bcrypt.hashpw(p.encode(),bcrypt.gensalt()).decode()
-    c.execute("UPDATE users SET password=%s WHERE username=%s",(h,u))
-    con.commit(); con.close()
-    return True
 # =====================================================
 # AUTH PAGE
 # =====================================================
 if not st.session_state.user:
     st.title("📝 Notes App")
 
-    c1,c2,c3=st.columns(3)
-    if c1.button("Login"): st.session_state.auth_mode="login"
-    if c2.button("Register"): st.session_state.auth_mode="register"
-    if c3.button("Reset"): st.session_state.auth_mode="reset"
-
     if st.session_state.auth_mode=="login":
         u=st.text_input("Username")
         p=st.text_input("Password",type="password")
-        if st.button("Masuk"):
+        if st.button("Login"):
             user=login(u,p)
             if user:
                 st.session_state.user=user
@@ -271,42 +222,40 @@ if not st.session_state.user:
             else:
                 st.error("Login gagal")
 
-    elif st.session_state.auth_mode=="register":
+    if st.button("Register"):
+        st.session_state.auth_mode="register"
+
+    if st.session_state.auth_mode=="register":
         u=st.text_input("Username")
         p=st.text_input("Password",type="password")
         if st.button("Daftar"):
-            ok,msg=register(u,p)
-            st.success(msg) if ok else st.error(msg)
-
-    else:
-        u=st.text_input("Username")
-        p=st.text_input("Password Baru",type="password")
-        if st.button("Reset Password"):
-            reset_pw(u,p)
-            st.success("Password direset")
+            if register(u,p):
+                st.success("Registrasi berhasil")
+                st.session_state.auth_mode="login"
+            else:
+                st.error("Username sudah ada")
 
 # =====================================================
 # MAIN APP
 # =====================================================
 else:
-    user=st.session_state.user
     st.title("📒 Catatan Saya")
 
     with st.expander("➕ Tambah Catatan"):
         t=st.text_input("Judul")
         cg=st.selectbox("Kategori",["Pribadi","Kerja","Kuliah","Ide","Lainnya"])
         col=st.color_picker("Warna","#FFF9C4")
-        ct=st.text_area("Isi Catatan")
-        img=st.file_uploader("Gambar (opsional)",["png","jpg","jpeg"])
-        if st.button("Simpan Catatan"):
-            add_note(user["id"],t,cg,col,ct,img_to_b64(img))
+        ct=st.text_area("Isi")
+        img=st.file_uploader("Gambar",["png","jpg","jpeg"])
+        if st.button("Simpan"):
+            add_note(st.session_state.user["id"],t,cg,col,ct,img_to_b64(img))
             st.experimental_rerun()
 
-    data=get_notes(user["id"])
+    data=get_notes(st.session_state.user["id"])
 
     if st.session_state.view_mode=="pinned":
         data=[n for n in data if n["is_favorite"]]
-    elif st.session_state.view_mode=="category" and st.session_state.filter_category!="Semua":
+    elif st.session_state.view_mode=="category":
         data=[n for n in data if n["category"]==st.session_state.filter_category]
 
     if st.session_state.search_query:
@@ -317,17 +266,16 @@ else:
     for i,n in enumerate(data):
         with cols[i%3]:
             tc=get_text_color(n["color"])
-            img_html = f"<img class='note-img' src='data:image/png;base64,{n['image']}'>" if n.get("image") else ""
+            img_html=f"<img class='note-img' src='data:image/png;base64,{n['image']}'>" if n["image"] else ""
             st.markdown(
-                f"<div class='note-card {'pinned' if n['is_favorite'] else ''}' "
-                f"style='background:{n['color']};color:{tc}'>"
+                f"<div class='note-card {'pinned' if n['is_favorite'] else ''}' style='background:{n['color']};color:{tc}'>"
                 f"<div class='note-title'>{'⭐ ' if n['is_favorite'] else ''}{n['title']}</div>"
                 f"<div class='note-content'>{n['content']}</div>{img_html}</div>",
                 unsafe_allow_html=True
             )
-            if st.button("⭐ Pin" if not n["is_favorite"] else "☆ Unpin", key=f"pin{n['id']}"):
+            if st.button("⭐ Pin" if not n["is_favorite"] else "☆ Unpin", key=f"p{n['id']}"):
                 pin_note(n["id"],0 if n["is_favorite"] else 1)
                 st.experimental_rerun()
-            if st.button("🗑️ Hapus", key=f"del{n['id']}"):
+            if st.button("🗑️ Hapus", key=f"d{n['id']}"):
                 delete_note(n["id"])
                 st.experimental_rerun()
