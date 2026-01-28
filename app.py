@@ -86,54 +86,64 @@ def img_to_b64(file):
     return base64.b64encode(file.read()).decode()
 
 # =====================================================
-# AUTH LOGIC
+# AUTH FUNCTIONS (SQLITE SAFE)
 # =====================================================
 def login(username, password):
+    if not username or not password:
+        return None
+
     con = db()
     c = con.cursor()
     c.execute(
-        "SELECT id, password FROM users WHERE username = ?",
+        "SELECT id, username, password FROM users WHERE username = ?",
         (username,)
     )
     row = c.fetchone()
     con.close()
 
-    if row and bcrypt.checkpw(password.encode(), row[1].encode()):
-        return {"id": row[0], "username": username}
+    if row and bcrypt.checkpw(password.encode(), row[2].encode()):
+        return {"id": row[0], "username": row[1]}
     return None
+
 
 def register(username, password):
     if not username or not password:
         return False, "Username & password wajib diisi"
 
-    try:
-        con = db()
-        c = con.cursor()
-        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        c.execute(
-            "INSERT INTO users(username, password) VALUES (?, ?)",
-            (username, hashed)
-        )
-        con.commit()
-        con.close()
-        return True, "Registrasi berhasil"
-    except:
-        return False, "Username sudah terdaftar"
-
-def reset_password(username, new_password):
-    if not username or not new_password:
-        return False, "Data tidak lengkap"
-
     con = db()
     c = con.cursor()
+
+    c.execute("SELECT id FROM users WHERE username = ?", (username,))
+    if c.fetchone():
+        con.close()
+        return False, "Username sudah digunakan"
+
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    c.execute(
+        "INSERT INTO users (username, password) VALUES (?, ?)",
+        (username, hashed)
+    )
+    con.commit()
+    con.close()
+
+    return True, "Registrasi berhasil"
+
+
+def reset_pw(username, new_password):
+    if not username or not new_password:
+        return False
+
     hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    con = db()
+    c = con.cursor()
     c.execute(
         "UPDATE users SET password = ? WHERE username = ?",
         (hashed, username)
     )
     con.commit()
     con.close()
-    return True, "Password berhasil direset"
+    return True
+
 # =====================================================
 # NOTES (CRUD)
 # =====================================================
@@ -287,41 +297,25 @@ if st.session_state.dark_mode:
     st.markdown("""
     <style>
     .stApp {
-        background-color: #202124;
-        color: #ffffff !important;
+        background-color: #121212 !important;
     }
 
-    h1,h2,h3,h4,h5,h6,
-    p,span,label,div {
+    * {
         color: #ffffff !important;
     }
 
     input, textarea, select {
-        background-color: #2b2b2b !important;
+        background-color: #1e1e1e !important;
         color: #ffffff !important;
         border: 1px solid #444 !important;
     }
 
     section[data-testid="stSidebar"] {
-        background-color: #1f1f1f;
-        color: #ffffff;
+        background-color: #1c1c1c !important;
     }
     </style>
     """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-    <style>
-    .stApp {
-        background-color: #ffffff;
-        color: #000000;
-    }
 
-    h1,h2,h3,h4,h5,h6,
-    p,span,label,div {
-        color: #000000;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 # =====================================================
 # SIDEBAR (SEARCH + FILTER + EXPORT)
 # =====================================================
@@ -371,43 +365,52 @@ with st.sidebar:
             st.rerun()
 
 # =====================================================
-# AUTH PAGE
+# AUTH PAGE (NO DUPLICATE ELEMENT)
 # =====================================================
 if not st.session_state.user:
     st.title("📝 Notes App")
 
-    c1, c2, c3 = st.columns(3)
-    if c1.button("Login"):
-        st.session_state.auth_mode = "login"
-    if c2.button("Register"):
-        st.session_state.auth_mode = "register"
-    if c3.button("Reset"):
-        st.session_state.auth_mode = "reset"
+    tab1, tab2, tab3 = st.tabs(["🔐 Login", "🆕 Register", "♻️ Reset"])
 
-    if st.session_state.auth_mode == "login":
-        u = st.text_input("Username", key="login_user")
-        p = st.text_input("Password", type="password", key="login_pass")
-        if st.button("Login"):
-            user = login(u, p)
-            if user:
-                st.session_state.user = user
-                st.rerun()
-            else:
-                st.error("Login gagal")
+    # ---------- LOGIN ----------
+    with tab1:
+        with st.form("login_form"):
+            u = st.text_input("Username", key="login_user")
+            p = st.text_input("Password", type="password", key="login_pass")
+            submit = st.form_submit_button("Login")
 
-    elif st.session_state.auth_mode == "register":
-        u = st.text_input("Username", key="reg_user")
-        p = st.text_input("Password", type="password", key="reg_pass")
-        if st.button("Register"):
-            ok, msg = register(u, p)
-            st.success(msg) if ok else st.error(msg)
+            if submit:
+                user = login(u, p)
+                if user:
+                    st.session_state.user = user
+                    st.rerun()
+                else:
+                    st.error("Username / Password salah")
 
-    else:
-        u = st.text_input("Username", key="reset_user")
-        p = st.text_input("Password Baru", type="password", key="reset_pass")
-        if st.button("Reset Password"):
-            ok, msg = reset_password(u, p)
-            st.success(msg) if ok else st.error(msg)
+    # ---------- REGISTER ----------
+    with tab2:
+        with st.form("register_form"):
+            ru = st.text_input("Username Baru", key="reg_user")
+            rp = st.text_input("Password Baru", type="password", key="reg_pass")
+            submit = st.form_submit_button("Register")
+
+            if submit:
+                ok, msg = register(ru, rp)
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+
+    # ---------- RESET ----------
+    with tab3:
+        with st.form("reset_form"):
+            fu = st.text_input("Username", key="reset_user")
+            fp = st.text_input("Password Baru", type="password", key="reset_pass")
+            submit = st.form_submit_button("Reset Password")
+
+            if submit:
+                reset_pw(fu, fp)
+                st.success("Password berhasil direset")
 
 # =====================================================
 # MAIN APP
