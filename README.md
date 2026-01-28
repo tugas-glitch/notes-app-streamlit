@@ -1,4 +1,4 @@
-# Tampilan Awal (Login/Registrasi)
+# Tampilan Awal (Login/Regist)
 
 <img width="1357" height="598" alt="tampilan" src="https://github.com/user-attachments/assets/fdb56553-69bd-44df-adcf-3e0aae0fe4ba" />
 
