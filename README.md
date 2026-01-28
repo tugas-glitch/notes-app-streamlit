@@ -117,11 +117,10 @@ notes-app-streamlit/
 
 3. Jalankan aplikasi:
 
-  ```bash
+    ```bash
 
-  streamlit run app.py
-
+    streamlit run app.py
 
 4. Buka browser:
 
-  http://localhost:8501
+    http://localhost:8501
