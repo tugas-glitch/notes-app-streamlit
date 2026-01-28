@@ -1,3 +1,5 @@
+![alt text](<Screenshot 2026-01-28 060754.png>)
+
 # 📝 Notes App – Streamlit
 
 Aplikasi **catatan (Notes App)** berbasis **Streamlit** dengan tampilan modern ala **Google Keep**.  
@@ -112,11 +114,11 @@ notes-app-streamlit/
 
 3. Jalankan aplikasi:
 
-```bash
+  ```bash
 
-streamlit run app.py
+  streamlit run app.py
 
 
 4. Buka browser:
 
-http://localhost:8501
+  http://localhost:8501
