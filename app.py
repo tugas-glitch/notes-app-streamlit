@@ -10,7 +10,11 @@ from reportlab.lib.pagesizes import A4
 # =====================================================
 # CONFIG
 # =====================================================
-st.set_page_config(page_title="Notes App", layout="wide")
+st.set_page_config(
+    page_title="Notes App",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # =====================================================
 # SESSION
@@ -29,7 +33,7 @@ if "search_query" not in st.session_state:
     st.session_state.search_query = ""
 
 # =====================================================
-# DATABASE (SQLITE)
+# DATABASE (SQLITE - CLOUD SAFE)
 # =====================================================
 def db():
     return sqlite3.connect("notes.db", check_same_thread=False)
@@ -37,6 +41,7 @@ def db():
 def init_db():
     con = db()
     c = con.cursor()
+
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,6 +49,7 @@ def init_db():
         password TEXT
     )
     """)
+
     c.execute("""
     CREATE TABLE IF NOT EXISTS notes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,11 +63,11 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
+
     con.commit()
     con.close()
 
 init_db()
-
 # =====================================================
 # UTIL
 # =====================================================
@@ -80,52 +86,72 @@ def img_to_b64(file):
     return base64.b64encode(file.read()).decode()
 
 # =====================================================
-# AUTH
+# AUTH LOGIC
 # =====================================================
-def login(u, p):
+def login(username, password):
     con = db()
     c = con.cursor()
-    c.execute("SELECT id, password FROM users WHERE username=?", (u,))
+    c.execute(
+        "SELECT id, password FROM users WHERE username = ?",
+        (username,)
+    )
     row = c.fetchone()
     con.close()
-    if row and bcrypt.checkpw(p.encode(), row[1].encode()):
-        return {"id": row[0], "username": u}
 
-def register(u, p):
+    if row and bcrypt.checkpw(password.encode(), row[1].encode()):
+        return {"id": row[0], "username": username}
+    return None
+
+def register(username, password):
+    if not username or not password:
+        return False, "Username & password wajib diisi"
+
     try:
         con = db()
         c = con.cursor()
-        h = bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode()
-        c.execute("INSERT INTO users(username,password) VALUES(?,?)", (u,h))
+        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        c.execute(
+            "INSERT INTO users(username, password) VALUES (?, ?)",
+            (username, hashed)
+        )
         con.commit()
         con.close()
-        return True
+        return True, "Registrasi berhasil"
     except:
-        return False
+        return False, "Username sudah terdaftar"
 
-def reset_pw(u, p):
+def reset_password(username, new_password):
+    if not username or not new_password:
+        return False, "Data tidak lengkap"
+
     con = db()
     c = con.cursor()
-    h = bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode()
-    c.execute("UPDATE users SET password=? WHERE username=?", (h,u))
+    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    c.execute(
+        "UPDATE users SET password = ? WHERE username = ?",
+        (hashed, username)
+    )
     con.commit()
     con.close()
-
+    return True, "Password berhasil direset"
 # =====================================================
-# NOTES
+# NOTES (CRUD)
 # =====================================================
-def get_notes(uid):
+def get_notes(user_id):
     con = db()
     c = con.cursor()
     c.execute("""
-        SELECT id,title,category,color,content,image,is_favorite
-        FROM notes WHERE user_id=?
+        SELECT id, title, category, color, content, image, is_favorite
+        FROM notes
+        WHERE user_id = ?
         ORDER BY is_favorite DESC, created_at DESC
-    """, (uid,))
+    """, (user_id,))
     rows = c.fetchall()
     con.close()
-    return [
-        {
+
+    notes = []
+    for r in rows:
+        notes.append({
             "id": r[0],
             "title": r[1],
             "category": r[2],
@@ -133,94 +159,179 @@ def get_notes(uid):
             "content": r[4],
             "image": r[5],
             "is_favorite": r[6]
-        } for r in rows
-    ]
+        })
+    return notes
 
-def add_note(uid,t,cg,col,ct,img):
-    if not t or not ct:
+def add_note(user_id, title, category, color, content, image):
+    if not title or not content:
         return
-    con=db()
-    c=con.cursor()
+    con = db()
+    c = con.cursor()
+    c.execute("""
+        INSERT INTO notes (user_id, title, category, color, content, image)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (user_id, title, category, color, content, image))
+    con.commit()
+    con.close()
+
+def delete_note(note_id):
+    con = db()
+    c = con.cursor()
+    c.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+    con.commit()
+    con.close()
+
+def toggle_pin(note_id, value):
+    con = db()
+    c = con.cursor()
     c.execute(
-        "INSERT INTO notes(user_id,title,category,color,content,image) VALUES(?,?,?,?,?,?)",
-        (uid,t,cg,col,ct,img)
+        "UPDATE notes SET is_favorite = ? WHERE id = ?",
+        (value, note_id)
     )
     con.commit()
     con.close()
 
-def delete_note(nid):
-    con=db()
-    c=con.cursor()
-    c.execute("DELETE FROM notes WHERE id=?", (nid,))
-    con.commit()
-    con.close()
-
-def pin_note(nid, v):
-    con=db()
-    c=con.cursor()
-    c.execute("UPDATE notes SET is_favorite=? WHERE id=?", (v,nid))
-    con.commit()
-    con.close()
-
 # =====================================================
-# PDF
+# PDF EXPORT
 # =====================================================
-def export_pdf(data, cat):
-    if cat != "Semua":
-        data = [n for n in data if n["category"] == cat]
-    buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4)
+def export_pdf(notes, category):
+    if category != "Semua":
+        notes = [n for n in notes if n["category"] == category]
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
     styles = getSampleStyleSheet()
-    story = [Paragraph(f"<b>NOTES - {cat}</b>", styles["Title"]), Spacer(1,12)]
-    for n in data:
-        story.append(Paragraph(
-            f"<b>{n['title']}</b><br/>{n['content']}",
-            styles["Normal"]
-        ))
-        story.append(Spacer(1,10))
+
+    story = [
+        Paragraph(f"<b>NOTES - {category}</b>", styles["Title"]),
+        Spacer(1, 12)
+    ]
+
+    for n in notes:
+        story.append(
+            Paragraph(
+                f"<b>{n['title']}</b><br/>{n['content']}",
+                styles["Normal"]
+            )
+        )
+        story.append(Spacer(1, 10))
+
     doc.build(story)
-    buf.seek(0)
-    return buf
+    buffer.seek(0)
+    return buffer
 # =====================================================
-# CSS (GOOGLE KEEP STYLE)
+# CSS - GOOGLE KEEP STYLE + MOBILE FRIENDLY
 # =====================================================
 st.markdown("""
 <style>
+/* CARD */
 .note-card {
-    padding:16px;
-    border-radius:18px;
-    margin-bottom:16px;
-    box-shadow:0 2px 6px rgba(0,0,0,.15);
+    padding: 16px;
+    border-radius: 18px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.15);
+    break-inside: avoid;
 }
 .note-title {
-    font-weight:600;
-    margin-bottom:6px;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+.note-content {
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: pre-wrap;
 }
 .note-img {
-    margin-top:10px;
-    border-radius:12px;
-    max-width:100%;
+    margin-top: 10px;
+    border-radius: 12px;
+    max-width: 100%;
 }
-.pinned { border:2px solid #f4c430; }
+.pinned {
+    border: 2px solid #f4c430;
+}
+
+/* MASONRY LAYOUT */
+.masonry {
+    column-count: 1;
+    column-gap: 16px;
+}
+@media (min-width: 768px) {
+    .masonry { column-count: 3; }
+}
+
+/* MOBILE FIX */
+@media (max-width: 768px) {
+    h1 { font-size: 22px !important; }
+    h2 { font-size: 18px !important; }
+    button { width: 100% !important; }
+}
+
+/* IMAGE FULLSCREEN PREVIEW */
+.preview-img { cursor: zoom-in; }
+.preview-img:active {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    object-fit: contain;
+    background: rgba(0,0,0,.95);
+    z-index: 9999;
+}
 </style>
 """, unsafe_allow_html=True)
 
 # =====================================================
-# THEME
+# THEME (LIGHT / DARK MODE - TEXT PUTIH JELAS)
 # =====================================================
 if st.session_state.dark_mode:
-    st.markdown("<style>.stApp{background:#202124;color:#e8eaed}</style>", unsafe_allow_html=True)
-else:
-    st.markdown("<style>.stApp{background:#ffffff;color:#202124}</style>", unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+    .stApp {
+        background-color: #202124;
+        color: #ffffff !important;
+    }
 
+    h1,h2,h3,h4,h5,h6,
+    p,span,label,div {
+        color: #ffffff !important;
+    }
+
+    input, textarea, select {
+        background-color: #2b2b2b !important;
+        color: #ffffff !important;
+        border: 1px solid #444 !important;
+    }
+
+    section[data-testid="stSidebar"] {
+        background-color: #1f1f1f;
+        color: #ffffff;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <style>
+    .stApp {
+        background-color: #ffffff;
+        color: #000000;
+    }
+
+    h1,h2,h3,h4,h5,h6,
+    p,span,label,div {
+        color: #000000;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 # =====================================================
-# SIDEBAR
+# SIDEBAR (SEARCH + FILTER + EXPORT)
 # =====================================================
 with st.sidebar:
     st.markdown("## 🗂️ Notes")
 
     st.session_state.search_query = st.text_input(
-        "🔍 Cari catatan", value=st.session_state.search_query, key="search"
+        "🔍 Cari catatan",
+        value=st.session_state.search_query,
+        key="sb_search"
     )
 
     if st.button("📝 Semua Catatan", use_container_width=True):
@@ -230,24 +341,31 @@ with st.sidebar:
 
     st.markdown("---")
     st.session_state.filter_category = st.selectbox(
-        "Kategori",
+        "📂 Kategori",
         ["Semua","Pribadi","Kerja","Kuliah","Ide","Lainnya"],
-        key="filter_cat"
+        key="sb_category"
     )
     if st.session_state.filter_category != "Semua":
         st.session_state.view_mode = "category"
 
     st.markdown("---")
-    st.toggle("🌙 Dark Mode", key="dark_mode")
-
     if st.session_state.user:
+        st.markdown("### 📄 Export PDF")
         st.download_button(
-            "⬇️ Export PDF",
-            export_pdf(get_notes(st.session_state.user["id"]), "Semua"),
-            "notes.pdf",
+            "⬇️ Download PDF",
+            export_pdf(
+                get_notes(st.session_state.user["id"]),
+                st.session_state.filter_category
+            ),
+            file_name="notes.pdf",
             mime="application/pdf",
             use_container_width=True
         )
+
+    st.markdown("---")
+    st.toggle("🌙 Dark Mode", key="dark_mode")
+
+    if st.session_state.user:
         if st.button("🚪 Logout", use_container_width=True):
             st.session_state.user = None
             st.rerun()
@@ -258,16 +376,19 @@ with st.sidebar:
 if not st.session_state.user:
     st.title("📝 Notes App")
 
-    c1,c2,c3 = st.columns(3)
-    if c1.button("Login"): st.session_state.auth_mode="login"
-    if c2.button("Register"): st.session_state.auth_mode="register"
-    if c3.button("Reset"): st.session_state.auth_mode="reset"
+    c1, c2, c3 = st.columns(3)
+    if c1.button("Login"):
+        st.session_state.auth_mode = "login"
+    if c2.button("Register"):
+        st.session_state.auth_mode = "register"
+    if c3.button("Reset"):
+        st.session_state.auth_mode = "reset"
 
     if st.session_state.auth_mode == "login":
         u = st.text_input("Username", key="login_user")
         p = st.text_input("Password", type="password", key="login_pass")
         if st.button("Login"):
-            user = login(u,p)
+            user = login(u, p)
             if user:
                 st.session_state.user = user
                 st.rerun()
@@ -278,17 +399,15 @@ if not st.session_state.user:
         u = st.text_input("Username", key="reg_user")
         p = st.text_input("Password", type="password", key="reg_pass")
         if st.button("Register"):
-            if register(u,p):
-                st.success("Registrasi berhasil")
-            else:
-                st.error("Username sudah ada")
+            ok, msg = register(u, p)
+            st.success(msg) if ok else st.error(msg)
 
     else:
         u = st.text_input("Username", key="reset_user")
         p = st.text_input("Password Baru", type="password", key="reset_pass")
         if st.button("Reset Password"):
-            reset_pw(u,p)
-            st.success("Password direset")
+            ok, msg = reset_password(u, p)
+            st.success(msg) if ok else st.error(msg)
 
 # =====================================================
 # MAIN APP
@@ -296,18 +415,32 @@ if not st.session_state.user:
 else:
     st.title("📒 Catatan Saya")
 
+    # ADD NOTE (EXPANDER)
     with st.expander("➕ Tambah Catatan"):
         t = st.text_input("Judul", key="new_title")
-        cg = st.selectbox("Kategori", ["Pribadi","Kerja","Kuliah","Ide","Lainnya"], key="new_cat")
+        cg = st.selectbox(
+            "Kategori",
+            ["Pribadi","Kerja","Kuliah","Ide","Lainnya"],
+            key="new_category"
+        )
         col = st.color_picker("Warna", "#FFF9C4", key="new_color")
         ct = st.text_area("Isi Catatan", key="new_content")
-        img = st.file_uploader("Gambar", type=["png","jpg","jpeg"], key="new_img")
-        if st.button("Simpan"):
-            add_note(st.session_state.user["id"], t, cg, col, ct, img_to_b64(img))
+        img = st.file_uploader(
+            "Gambar (opsional)",
+            type=["png","jpg","jpeg"],
+            key="new_image"
+        )
+        if st.button("Simpan Catatan"):
+            add_note(
+                st.session_state.user["id"],
+                t, cg, col, ct, img_to_b64(img)
+            )
             st.rerun()
 
+    # LOAD DATA
     data = get_notes(st.session_state.user["id"])
 
+    # FILTER
     if st.session_state.view_mode == "pinned":
         data = [n for n in data if n["is_favorite"]]
     elif st.session_state.view_mode == "category":
@@ -315,22 +448,98 @@ else:
 
     if st.session_state.search_query:
         q = st.session_state.search_query.lower()
-        data = [n for n in data if q in n["title"].lower() or q in n["content"].lower()]
+        data = [
+            n for n in data
+            if q in n["title"].lower() or q in n["content"].lower()
+        ]
 
-    cols = st.columns(3)
-    for i,n in enumerate(data):
-        with cols[i%3]:
-            tc = get_text_color(n["color"])
-            img_html = f"<img class='note-img' src='data:image/png;base64,{n['image']}'>" if n["image"] else ""
-            st.markdown(
-                f"<div class='note-card {'pinned' if n['is_favorite'] else ''}' style='background:{n['color']};color:{tc}'>"
-                f"<div class='note-title'>{'⭐ ' if n['is_favorite'] else ''}{n['title']}</div>"
-                f"<div>{n['content']}</div>{img_html}</div>",
-                unsafe_allow_html=True
-            )
-            if st.button("⭐ Pin" if not n["is_favorite"] else "☆ Unpin", key=f"pin{n['id']}"):
-                pin_note(n["id"], 0 if n["is_favorite"] else 1)
-                st.rerun()
-            if st.button("🗑️ Hapus", key=f"del{n['id']}"):
-                delete_note(n["id"])
-                st.rerun()
+    # NOTES GRID (MASONRY)
+    st.markdown("<div class='masonry'>", unsafe_allow_html=True)
+    for n in data:
+        tc = get_text_color(n["color"])
+        img_html = (
+            f"<img class='note-img preview-img' src='data:image/png;base64,{n['image']}'>"
+            if n["image"] else ""
+        )
+        st.markdown(
+            f"""
+            <div class="note-card {'pinned' if n['is_favorite'] else ''}"
+                 style="background:{n['color']};color:{tc}">
+                <div class="note-title">
+                    {'⭐ ' if n['is_favorite'] else ''}{n['title']}
+                </div>
+                <div class="note-content">{n['content']}</div>
+                {img_html}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            "⭐ Pin" if not n["is_favorite"] else "☆ Unpin",
+            key=f"pin_{n['id']}"
+        ):
+            toggle_pin(n["id"], 0 if n["is_favorite"] else 1)
+            st.rerun()
+
+        if st.button("🗑️ Hapus", key=f"del_{n['id']}"):
+            delete_note(n["id"])
+            st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# =====================================================
+# FLOATING ACTION BUTTON (FAB)
+# =====================================================
+st.markdown("""
+<style>
+.fab {
+    position: fixed;
+    bottom: 70px;
+    right: 20px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: #1a73e8;
+    color: white;
+    font-size: 32px;
+    text-align: center;
+    line-height: 56px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.3);
+    z-index: 9999;
+}
+</style>
+<div class="fab">+</div>
+""", unsafe_allow_html=True)
+
+# =====================================================
+# BOTTOM NAV (MOBILE ONLY)
+# =====================================================
+st.markdown("""
+<style>
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: #ffffff;
+    border-top: 1px solid #ddd;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 9998;
+}
+.bottom-nav div {
+    font-size: 14px;
+}
+@media (min-width: 769px) {
+    .bottom-nav { display: none; }
+}
+</style>
+<div class="bottom-nav">
+  <div>🏠<br/>All</div>
+  <div>⭐<br/>Pinned</div>
+  <div>➕<br/>Add</div>
+</div>
+""", unsafe_allow_html=True)
