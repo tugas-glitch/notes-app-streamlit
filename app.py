@@ -592,57 +592,32 @@ else:
     st.markdown("</div>", unsafe_allow_html=True)
 
 # =====================================================
-# FLOATING ACTION BUTTON (FAB)
+# FLOATING ACTION BUTTON (REAL CLICKABLE)
 # =====================================================
 st.markdown("""
 <style>
-.fab {
+.fab-container {
     position: fixed;
-    bottom: 70px;
+    bottom: 80px;
     right: 20px;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: #1a73e8;
-    color: white;
-    font-size: 32px;
-    text-align: center;
-    line-height: 56px;
-    box-shadow: 0 4px 12px rgba(0,0,0,.3);
     z-index: 9999;
 }
+.fab-container button {
+    width: 56px !important;
+    height: 56px !important;
+    border-radius: 50% !important;
+    font-size: 28px !important;
+    background: #1a73e8 !important;
+    color: white !important;
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,.35) !important;
+}
 </style>
-<div class="fab">+</div>
 """, unsafe_allow_html=True)
 
-# =====================================================
-# BOTTOM NAV (MOBILE ONLY)
-# =====================================================
-st.markdown("""
-<style>
-.bottom-nav {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 56px;
-    background: #ffffff;
-    border-top: 1px solid #ddd;
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    z-index: 9998;
-}
-.bottom-nav div {
-    font-size: 14px;
-}
-@media (min-width: 769px) {
-    .bottom-nav { display: none; }
-}
-</style>
-<div class="bottom-nav">
-  <div>🏠<br/>All</div>
-  <div>⭐<br/>Pinned</div>
-  <div>➕<br/>Add</div>
-</div>
-""", unsafe_allow_html=True)
+with st.container():
+    st.markdown('<div class="fab-container">', unsafe_allow_html=True)
+    if st.button("➕", key="fab_add"):
+        st.session_state.show_add = True
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
