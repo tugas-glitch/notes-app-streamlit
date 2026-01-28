@@ -4,3 +4,4 @@ notes.db
 .env
 .vscode/
 .idea/
+*.png
