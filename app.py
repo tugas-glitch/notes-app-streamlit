@@ -296,22 +296,99 @@ st.markdown("""
 if st.session_state.dark_mode:
     st.markdown("""
     <style>
+    /* ROOT APP */
     .stApp {
+        background-color: #121212 !important;
+        color: #ffffff !important;
+    }
+
+    /* HEADINGS & TEXT (AMAN, TIDAK GLOBAL DIV) */
+    h1, h2, h3, h4, h5, h6,
+    p, label, span {
+        color: #ffffff !important;
+    }
+
+    /* MAIN CONTENT WRAPPER */
+    section.main {
         background-color: #121212 !important;
     }
 
-    * {
-        color: #ffffff !important;
+    /* SIDEBAR */
+    section[data-testid="stSidebar"] {
+        background-color: #1e1e1e !important;
     }
 
-    input, textarea, select {
-        background-color: #1e1e1e !important;
+    /* INPUT & TEXTAREA */
+    div[data-testid="stTextInput"] input,
+    div[data-testid="stTextArea"] textarea {
+        background-color: #1f1f1f !important;
         color: #ffffff !important;
         border: 1px solid #444 !important;
+        border-radius: 10px !important;
     }
 
-    section[data-testid="stSidebar"] {
+    /* SELECTBOX */
+    div[data-baseweb="select"] > div {
+        background-color: #1f1f1f !important;
+        color: #ffffff !important;
+        border: 1px solid #444 !important;
+        border-radius: 10px !important;
+    }
+
+    /* BUTTON */
+    button[data-testid="baseButton-secondary"],
+    button[data-testid="baseButton-primary"] {
+        background-color: #2a2a2a !important;
+        color: #ffffff !important;
+        border: 1px solid #444 !important;
+        border-radius: 10px !important;
+    }
+
+    button:hover {
+        background-color: #333333 !important;
+    }
+
+    /* TABS (LOGIN / REGISTER / RESET) */
+    button[data-baseweb="tab"] {
+        color: #aaaaaa !important;
+    }
+
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #ffffff !important;
+        border-bottom: 2px solid #ff5252 !important;
+    }
+
+    /* FORM CARD */
+    div[data-testid="stForm"] {
         background-color: #1c1c1c !important;
+        border-radius: 16px;
+        padding: 16px;
+        border: 1px solid #333;
+    }
+
+    /* DOWNLOAD BUTTON */
+    a[download] {
+        background-color: #2a2a2a !important;
+        color: #ffffff !important;
+        border-radius: 10px !important;
+        padding: 10px 16px;
+        text-decoration: none;
+    }
+
+    /* BOTTOM NAV */
+    .bottom-nav {
+        background-color: #1a1a1a !important;
+        border-top: 1px solid #333 !important;
+    }
+
+    </style>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <style>
+    .stApp {
+        background-color: #ffffff;
+        color: #000000;
     }
     </style>
     """, unsafe_allow_html=True)
