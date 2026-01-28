@@ -31,6 +31,8 @@ if "filter_category" not in st.session_state:
     st.session_state.filter_category = "Semua"
 if "search_query" not in st.session_state:
     st.session_state.search_query = ""
+if "show_add" not in st.session_state:
+    st.session_state.show_add = False
 
 # =====================================================
 # DATABASE (SQLITE - CLOUD SAFE)
@@ -495,29 +497,46 @@ if not st.session_state.user:
 else:
     st.title("📒 Catatan Saya")
 
-    # ADD NOTE (EXPANDER)
-    with st.expander("➕ Tambah Catatan"):
-        t = st.text_input("Judul", key="new_title")
-        cg = st.selectbox(
-            "Kategori",
-            ["Pribadi","Kerja","Kuliah","Ide","Lainnya"],
-            key="new_category"
-        )
-        col = st.color_picker("Warna", "#FFF9C4", key="new_color")
-        ct = st.text_area("Isi Catatan", key="new_content")
-        img = st.file_uploader(
-            "Gambar (opsional)",
-            type=["png","jpg","jpeg"],
-            key="new_image"
-        )
-        if st.button("Simpan Catatan"):
-            add_note(
-                st.session_state.user["id"],
-                t, cg, col, ct, img_to_b64(img)
-            )
-            st.rerun()
+    # ===============================
+    # ADD NOTE FORM (ONLY WHEN FAB)
+    # ===============================
+    if st.session_state.show_add:
+        st.markdown("## ➕ Tambah Catatan")
 
+        with st.form("add_note_form"):
+            t = st.text_input("Judul")
+            cg = st.selectbox(
+                "Kategori",
+                ["Pribadi","Kerja","Kuliah","Ide","Lainnya"]
+            )
+            col = st.color_picker("Warna", "#FFF9C4")
+            ct = st.text_area("Isi Catatan")
+            img = st.file_uploader(
+                "Gambar (opsional)",
+                type=["png","jpg","jpeg"]
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                save = st.form_submit_button("💾 Simpan")
+            with col2:
+                cancel = st.form_submit_button("❌ Batal")
+
+            if save:
+                add_note(
+                    st.session_state.user["id"],
+                    t, cg, col, ct, img_to_b64(img)
+                )
+                st.session_state.show_add = False
+                st.rerun()
+
+            if cancel:
+                st.session_state.show_add = False
+                st.rerun()
+
+    # ===============================
     # LOAD DATA
+    # ===============================
     data = get_notes(st.session_state.user["id"])
 
     # FILTER
@@ -533,14 +552,18 @@ else:
             if q in n["title"].lower() or q in n["content"].lower()
         ]
 
+    # ===============================
     # NOTES GRID (MASONRY)
+    # ===============================
     st.markdown("<div class='masonry'>", unsafe_allow_html=True)
+
     for n in data:
         tc = get_text_color(n["color"])
         img_html = (
             f"<img class='note-img preview-img' src='data:image/png;base64,{n['image']}'>"
             if n["image"] else ""
         )
+
         st.markdown(
             f"""
             <div class="note-card {'pinned' if n['is_favorite'] else ''}"
