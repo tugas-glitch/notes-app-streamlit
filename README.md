@@ -1,4 +1,5 @@
-![alt text](<Screenshot 2026-01-28 060754.png>)
+<img width="1366" height="641" alt="Screenshot 2026-01-28 060754" src="https://github.com/user-attachments/assets/271ff86f-0ba0-4ddc-be87-281d488b9348" />
+
 
 # 📝 Notes App – Streamlit
 
